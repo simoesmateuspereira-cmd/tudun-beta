@@ -1,0 +1,24 @@
+<article class="event-card{% if event.is_featured %} event-card-featured{% endif %}">
+  <div class="event-card-top">
+    <span class="event-category">{{ event.category }}</span>
+    <span class="status status-{{ event.status }}">{{ event.get_status_display }}</span>
+  </div>
+  <h3><a href="{% url 'communities:event_detail' community.slug event.slug %}">{{ event.title }}</a></h3>
+  <div class="event-meta">
+    <time datetime="{{ event.starts_at|date:'c' }}">{{ event.starts_at|date:'d/m/Y' }} às {{ event.starts_at|time:'H:i' }}</time>
+    <span>{{ event.location }}</span>
+  </div>
+  <p>{{ event.description|truncatewords:24 }}</p>
+  <div>
+    {% if event.included_in_membership %}
+      <span class="event-included">Incluído na assinatura</span>
+    {% else %}
+      <span class="event-additional">Ingresso adicional</span>
+      <strong class="event-price">R$ {{ event.price|floatformat:2 }}</strong>
+    {% endif %}
+  </div>
+  <div class="event-actions">
+    <small>Capacidade: {{ event.capacity }} pessoas</small>
+    <a class="button button-secondary button-small" href="{% url 'communities:event_detail' community.slug event.slug %}">Ver detalhes</a>
+  </div>
+</article>

@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}{{ event.title }} · {{ community.name }} · TUDUN{% endblock %}
+{% block content %}
+<section class="event-detail-header">
+  <div>
+    <a class="text-link event-back" href="{% url 'communities:events' community.slug %}">← Voltar para a agenda</a>
+    <div class="event-labels">
+      <span class="event-category">{{ event.category }}</span>
+      {% if event.included_in_membership %}
+        <span class="event-included">Incluído na assinatura</span>
+      {% else %}
+        <span class="event-additional">Ingresso adicional</span>
+      {% endif %}
+    </div>
+    <h1>{{ event.title }}</h1>
+    <p>{{ event.location }}</p>
+  </div>
+  <div class="event-management-actions">
+    <span class="status status-{{ event.status }}">{{ event.get_status_display }}</span>
+    {% if can_moderate %}
+      <div class="form-actions">
+        <a class="button button-small button-secondary" href="{% url 'communities:event_update' community.slug event.slug %}">Editar evento</a>
+        {% if event.status != 'cancelled' %}<a class="button button-small button-danger" href="{% url 'communities:event_cancel' community.slug event.slug %}">Cancelar evento</a>{% endif %}
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% include 'partials/community_nav.html' %}
+<div class="event-detail-layout">
+  <article class="card event-description">
+    <span class="eyebrow">SOBRE A EXPERIÊNCIA</span>
+    <h2>Um encontro para criar repertório e conexões.</h2>
+    <p>{{ event.description|linebreaksbr }}</p>
+    <div class="environment-notice">Evento fictício para demonstração. Nenhuma reserva, cobrança ou emissão de ingresso será realizada.</div>
+  </article>
+  <aside class="card event-facts" aria-label="Informações do evento">
+    <h2>Informações</h2>
+    <dl>
+      <div>
+        <dt>Data</dt>
+        <dd>{{ event.starts_at|date:'d/m/Y' }}</dd>
+      </div>
+      <div>
+        <dt>Horário</dt>
+        <dd>{{ event.starts_at|time:'H:i' }}–{{ event.ends_at|time:'H:i' }}</dd>
+      </div>
+      <div>
+        <dt>Local</dt>
+        <dd>{{ event.location }}</dd>
+      </div>
+      <div>
+        <dt>Capacidade</dt>
+        <dd>{{ event.capacity }} pessoas</dd>
+      </div>
+      <div>
+        <dt>Acesso</dt>
+        {% if event.included_in_membership %}
+          <dd class="discount">Incluído na assinatura fictícia</dd>
+        {% else %}
+          <dd class="event-detail-price">R$ {{ event.price|floatformat:2 }}</dd>
+        {% endif %}
+      </div>
+      <div>
+        <dt>Situação</dt>
+        <dd><span class="status status-{{ event.status }}">{{ event.get_status_display }}</span></dd>
+      </div>
+    </dl>
+  </aside>
+</div>
+{% endblock %}

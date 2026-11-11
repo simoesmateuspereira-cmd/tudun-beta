@@ -1,0 +1,17 @@
+.venv/
+.env
+.env.*
+!.env.example
+.postgres/
+.postgres-recovered/
+.runtime/
+.collected_static/
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
+node_modules/
+playwright-report/
+test-results/
+backups/
+apresentacao-investidor/

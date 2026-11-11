@@ -1,0 +1,12 @@
+<nav class="community-nav" aria-label="Áreas da comunidade">
+  <a href="{% url 'communities:detail' community.slug %}">Visão geral</a>
+  <a href="{% url 'communities:events' community.slug %}">Eventos</a>
+  {% if membership.role == 'admin' or membership.role == 'moderator' or can_moderate %}
+    <a href="{% url 'communities:members' community.slug %}">Membros</a>
+    <a href="{% url 'communities:requests' community.slug %}">Solicitações</a>
+  {% endif %}
+  {% if membership.role == 'admin' or can_manage %}
+    <a href="{% url 'communities:invitations' community.slug %}">Convites</a>
+    <a href="{% url 'communities:audit' community.slug %}">Auditoria</a>
+  {% endif %}
+</nav>

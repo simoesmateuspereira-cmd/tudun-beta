@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}{% if is_edit %}Editar {{ event.title }}{% else %}Novo evento{% endif %} · {{ community.name }} · TUDUN{% endblock %}
+{% block content %}
+<section class="narrow">
+  <div class="card">
+    <span class="eyebrow">GESTÃO DA AGENDA</span>
+    <h1>{% if is_edit %}Editar evento{% else %}Novo evento{% endif %}</h1>
+    <p>{% if is_edit %}Atualize as informações apresentadas aos participantes.{% else %}Preencha os dados para publicar uma experiência na agenda da comunidade.{% endif %}</p>
+    <div class="environment-notice">Neste ambiente, preços e assinaturas são apenas demonstrações. Nenhuma cobrança ou reserva será realizada.</div>
+    <form method="post" class="event-management-form">
+      {% csrf_token %}
+      {% include 'partials/form.html' %}
+      <div class="form-actions">
+        <button class="button" type="submit">{% if is_edit %}Salvar alterações{% else %}Publicar evento{% endif %}</button>
+        <a class="button button-secondary" href="{% if is_edit %}{% url 'communities:event_detail' community.slug event.slug %}{% else %}{% url 'communities:events' community.slug %}{% endif %}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

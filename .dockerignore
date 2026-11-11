@@ -1,0 +1,14 @@
+.git
+.venv
+.env*
+.postgres
+.postgres-recovered
+.runtime
+.collected_static
+backups
+node_modules
+__pycache__
+*.pyc
+*.log
+working files
+apresentacao-investidor

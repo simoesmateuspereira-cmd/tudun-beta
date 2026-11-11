@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% block title %}Entrar · TUDUN{% endblock %}{% block content %}
+<section class="auth-layout">
+  <div class="auth-intro"><span class="eyebrow">SEU ESPAÇO, SUAS CONEXÕES</span><h1>Que bom ter você de volta.</h1><p>Acesse suas comunidades privadas neste ambiente de validação.</p></div>
+  <div class="card form-card"><h2>Entrar</h2><p class="muted">Use somente uma conta fictícia.</p><form method="post">{% csrf_token %}{% include 'partials/form.html' %}{% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}<button class="button button-full" type="submit">Entrar</button></form><p class="form-footer">Ainda não tem conta? <a href="{% url 'identity:signup' %}">Cadastre-se para testar</a>.</p></div>
+</section>
+{% endblock %}

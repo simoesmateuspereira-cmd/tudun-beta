@@ -1,0 +1,9 @@
+{
+  "name": "tudun-etapa-1",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ambiente local fictício da Etapa 1 do TUDUN",
+  "scripts": {
+    "dev": "node scripts/dev.mjs"
+  }
+}

@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Eventos · {{ community.name }} · TUDUN{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <span class="eyebrow">{{ community.name }}</span>
+    <h1>Agenda da comunidade</h1>
+    <p>Encontros, workshops e experiências para aproximar os participantes.</p>
+  </div>
+  {% if can_moderate %}<a class="button" href="{% url 'communities:event_create' community.slug %}">Novo evento</a>{% endif %}
+</section>
+{% include 'partials/community_nav.html' %}
+<div class="environment-notice">Ambiente de demonstração: os eventos e valores são fictícios. Reservas, pagamentos e check-in não estão habilitados.</div>
+{% if events %}
+  <div class="event-grid event-catalog">
+    {% for event in events %}
+      {% include 'partials/event_card.html' %}
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty-state">
+    <h2>Nenhum evento publicado</h2>
+    <p>A programação desta comunidade aparecerá aqui.</p>
+  </div>
+{% endif %}
+{% endblock %}
