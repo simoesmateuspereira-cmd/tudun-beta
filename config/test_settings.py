@@ -34,6 +34,14 @@ class ProductionSettingsTests(SimpleTestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "django.core.cache.backends.locmem.LocMemCache")
 
+    def test_database_sslmode_is_configurable(self):
+        result = self.load_settings(
+            "print(settings.DATABASES['default']['OPTIONS']['sslmode'])",
+            DATABASE_SSLMODE="require",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "require")
+
     def test_redis_url_selects_shared_cache_with_key_prefix(self):
         result = self.load_settings(
             "print(settings.CACHES['default']['BACKEND']); "

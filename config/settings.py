@@ -69,6 +69,10 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 database_url = urlparse(os.environ["DATABASE_URL"])
+database_options = {"connect_timeout": 5}
+database_sslmode = os.getenv("DATABASE_SSLMODE", "").strip()
+if database_sslmode:
+    database_options["sslmode"] = database_sslmode
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -80,7 +84,7 @@ DATABASES = {
         # O pacote local do PostgreSQL não inclui a base IANA; GMT equivale a UTC.
         "TIME_ZONE": os.getenv("DATABASE_TIME_ZONE", "GMT"),
         "CONN_MAX_AGE": int(os.getenv("DATABASE_CONN_MAX_AGE", "0")),
-        "OPTIONS": {"connect_timeout": 5},
+        "OPTIONS": database_options,
     }
 }
 
