@@ -13,10 +13,15 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
-CLIENT_ID = os.getenv("GMAIL_CLIENT_ID", "").strip()
-CLIENT_SECRET = os.getenv("GMAIL_CLIENT_SECRET", "").strip()
+client_file = ROOT / ".runtime" / "gmail-oauth-client.json"
+client_data = {}
+if client_file.exists():
+    client_data = json.loads(client_file.read_text(encoding="utf-8"))
+    client_data = client_data.get("installed") or client_data.get("web") or {}
+CLIENT_ID = client_data.get("client_id") or os.getenv("GMAIL_CLIENT_ID", "").strip()
+CLIENT_SECRET = client_data.get("client_secret") or os.getenv("GMAIL_CLIENT_SECRET", "").strip()
 if not CLIENT_ID or not CLIENT_SECRET:
-    raise SystemExit("Preencha GMAIL_CLIENT_ID e GMAIL_CLIENT_SECRET no arquivo .env local.")
+    raise SystemExit("Baixe o JSON do cliente OAuth para .runtime/gmail-oauth-client.json.")
 
 state = secrets.token_urlsafe(32)
 result = {}
