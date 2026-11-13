@@ -22,17 +22,20 @@ os.environ["DJANGO_REQUIRE_SHARED_CACHE"] = "True"
 os.environ["DJANGO_REQUIRE_SMTP"] = "True"
 os.environ["LOG_TO_FILE"] = "False"
 os.environ.setdefault("DJANGO_TRUST_PROXY_SSL", "True")
-os.environ.setdefault("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+email_backend = os.environ.setdefault("EMAIL_BACKEND", "identity.gmail_backend.GmailAPIBackend")
 
-required = (
+required = [
     "DJANGO_SECRET_KEY",
     "DATABASE_URL",
     "CACHE_URL",
     "DJANGO_ALLOWED_HOSTS",
     "DJANGO_CSRF_TRUSTED_ORIGINS",
-    "EMAIL_HOST",
     "DEFAULT_FROM_EMAIL",
-)
+]
+if email_backend == "identity.gmail_backend.GmailAPIBackend":
+    required.extend(("GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"))
+else:
+    required.append("EMAIL_HOST")
 missing = [name for name in required if not os.getenv(name, "").strip()]
 if missing:
     raise RuntimeError("Variáveis obrigatórias ausentes: " + ", ".join(missing))

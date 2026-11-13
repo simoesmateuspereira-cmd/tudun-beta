@@ -177,14 +177,16 @@ from django.core.exceptions import ImproperlyConfigured
 
 if env_bool("DJANGO_REQUIRE_SHARED_CACHE") and not CACHE_URL:
     raise ImproperlyConfigured("DJANGO_REQUIRE_SHARED_CACHE exige CACHE_URL com um Redis compartilhado.")
-if env_bool("DJANGO_REQUIRE_SMTP") and (
-    EMAIL_BACKEND != "django.core.mail.backends.smtp.EmailBackend"
-    or not EMAIL_HOST
-    or not DEFAULT_FROM_EMAIL
-):
-    raise ImproperlyConfigured(
-        "DJANGO_REQUIRE_SMTP exige o backend SMTP, EMAIL_HOST e DEFAULT_FROM_EMAIL configurados."
+if env_bool("DJANGO_REQUIRE_SMTP"):
+    smtp_ready = EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend" and EMAIL_HOST
+    gmail_ready = EMAIL_BACKEND == "identity.gmail_backend.GmailAPIBackend" and all(
+        os.getenv(name, "").strip()
+        for name in ("GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN")
     )
+    if not DEFAULT_FROM_EMAIL or not (smtp_ready or gmail_ready):
+        raise ImproperlyConfigured(
+            "DJANGO_REQUIRE_SMTP exige SMTP completo ou Gmail API completo, além de DEFAULT_FROM_EMAIL."
+        )
 
 RATELIMIT_ENABLE = env_bool("RATELIMIT_ENABLE", True)
 RATELIMIT_USE_CACHE = os.getenv("RATELIMIT_USE_CACHE", "default")

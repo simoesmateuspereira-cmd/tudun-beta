@@ -71,7 +71,33 @@ class ProductionSettingsTests(SimpleTestCase):
             EMAIL_BACKEND="django.core.mail.backends.filebased.EmailBackend",
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("DJANGO_REQUIRE_SMTP exige o backend SMTP", result.stderr)
+        self.assertIn("DJANGO_REQUIRE_SMTP exige", result.stderr)
+
+    def test_required_email_accepts_complete_gmail_api_configuration(self):
+        result = self.load_settings(
+            "print(settings.EMAIL_BACKEND)",
+            DJANGO_REQUIRE_SMTP="True",
+            EMAIL_BACKEND="identity.gmail_backend.GmailAPIBackend",
+            GMAIL_CLIENT_ID="cliente-teste",
+            GMAIL_CLIENT_SECRET="segredo-teste",
+            GMAIL_REFRESH_TOKEN="renovacao-teste",
+            DEFAULT_FROM_EMAIL="remetente@gmail.com",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "identity.gmail_backend.GmailAPIBackend")
+
+    def test_required_email_rejects_incomplete_gmail_api_configuration(self):
+        result = self.load_settings(
+            "pass",
+            DJANGO_REQUIRE_SMTP="True",
+            EMAIL_BACKEND="identity.gmail_backend.GmailAPIBackend",
+            GMAIL_CLIENT_ID="",
+            GMAIL_CLIENT_SECRET="",
+            GMAIL_REFRESH_TOKEN="",
+            DEFAULT_FROM_EMAIL="remetente@gmail.com",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Gmail API completo", result.stderr)
 
     def test_hosted_logs_use_console_only(self):
         result = self.load_settings(
