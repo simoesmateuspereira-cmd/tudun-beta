@@ -97,3 +97,10 @@ O PostgreSQL local foi recuperado em uma cópia preservada, sem encerrar o proce
 | 11/11/2026 | Falha do PostgreSQL local | Cópia recuperada preservada; execução restabelecida |
 | 11/11/2026 | Gestão, provisionamento e preparação de produção | B08 e B09 concluídos localmente; suporte a Redis/SMTP e operação preparados |
 | 11/11/2026 | Regressão completa | 63 testes, homologação, 19 capturas, backup e restore aprovados localmente; NO-GO externo mantido |
+| 16/11/2026 | Homologação externa publicada (Render Free) | Deploy `tudun-homologacao` no ar em https://tudun-homologacao.onrender.com; aceite externo aprovado |
+| 16/11/2026 | Aceite externo executado | `/saude/` 200 com banco Neon OK; home 200; cadastro de usuário fictício completo com e-mail de verificação despachado via Gmail API |
+| 16/11/2026 | Correção de proxy SSL no Render Free | Render não repassa `X-Forwarded-Proto` (verificado por echo no health check); `SECURE_SSL_REDIRECT=True` ficava em loop 301. Solução: `config.middleware.ForceHttpsSchemeMiddleware` (ativado por `DJANGO_FORCE_HTTPS_SCHEME=True` no `render.free.yaml`), que define `wsgi.url_scheme=https` antes do SecurityMiddleware |
+| 16/11/2026 | Senha do Neon resetada | Reset via console Neon (a senha copiada no deploy 3 estava incorreta); nova senha validada por conexão local antes do redeploy |
+| 16/11/2026 | Superusuário de homologação criado | `mateus` criado diretamente no Neon para acesso ao `/admin/` |
+| 16/11/2026 | Aprendizado: env vars de Blueprint | Sync do Blueprint (`exs-dbtk8r88v5cc7398vjeg`) é necessário para aplicar valores de env do `render.free.yaml` a um serviço existente; edição manual no dashboard pode divergir do YAML e um sync futuro reverte |
+| 16/11/2026 | Pendente para o Beta | Publicar o app OAuth do Google Cloud (modo Testing faz o refresh token expirar em 7 dias); definir B20 (critérios do Beta) |
