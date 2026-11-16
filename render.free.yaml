@@ -41,6 +41,8 @@ services:
         sync: false
       - key: DJANGO_TRUST_PROXY_SSL
         value: "True"
+      - key: DJANGO_FORCE_HTTPS_SCHEME
+        value: "True"
       - key: SESSION_COOKIE_SECURE
         value: "True"
       - key: CSRF_COOKIE_SECURE

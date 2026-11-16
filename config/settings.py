@@ -48,6 +48,9 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+if env_bool("DJANGO_FORCE_HTTPS_SCHEME"):
+    # Proxy de terminação SSL que não repassa X-Forwarded-Proto (Render Free).
+    MIDDLEWARE.insert(0, "config.middleware.ForceHttpsSchemeMiddleware")
 if not DEBUG:
     MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
