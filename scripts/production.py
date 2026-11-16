@@ -21,7 +21,17 @@ os.environ["DJANGO_DEBUG"] = "False"
 os.environ["DJANGO_REQUIRE_SHARED_CACHE"] = "True"
 os.environ["DJANGO_REQUIRE_SMTP"] = "True"
 os.environ["LOG_TO_FILE"] = "False"
-os.environ.setdefault("DJANGO_TRUST_PROXY_SSL", "True")
+# Sempre confiar no cabeçalho de proxy em hospedagem gerenciada com HTTPS
+# terminado no proxy; um valor vindo do ambiente nunca deve desligar isso.
+os.environ["DJANGO_TRUST_PROXY_SSL"] = "True"
+print(
+    "[startup] DJANGO_TRUST_PROXY_SSL=%r SECURE_SSL_REDIRECT=%r DATABASE_URL host=%s"
+    % (
+        os.getenv("DJANGO_TRUST_PROXY_SSL"),
+        os.getenv("SECURE_SSL_REDIRECT"),
+        (os.getenv("DATABASE_URL", "").split("@")[-1].split("/")[0] or "?"),
+    )
+)
 email_backend = os.environ.setdefault("EMAIL_BACKEND", "identity.gmail_backend.GmailAPIBackend")
 
 required = [
