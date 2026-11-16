@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
 
-from .models import Community, Event, Invitation, Membership, MembershipRequest, Notice
+from .models import Community, Event, Invitation, Membership, Notice
 
 
 class CommunityForm(forms.ModelForm):
@@ -63,8 +63,8 @@ class EventForm(forms.ModelForm):
             "starts_at": "Início",
             "ends_at": "Término",
             "capacity": "Capacidade",
-            "included_in_membership": "Incluído na assinatura fictícia",
-            "price": "Preço fictício (R$)",
+            "included_in_membership": "Incluído na assinatura",
+            "price": "Preço (R$)",
             "status": "Situação",
             "is_featured": "Destacar na agenda",
         }
@@ -79,7 +79,7 @@ class EventForm(forms.ModelForm):
         if community is not None:
             self.instance.community = community
         self.fields["price"].required = False
-        self.fields["price"].help_text = "Somente exibição fictícia; nenhuma cobrança será realizada."
+        self.fields["price"].help_text = "Deixe em branco para eventos gratuitos ou incluídos na assinatura."
         for field_name in ("starts_at", "ends_at"):
             self.fields[field_name].input_formats = ["%Y-%m-%dT%H:%M", "%d/%m/%Y %H:%M"]
 
@@ -91,22 +91,18 @@ class InvitationForm(forms.ModelForm):
     class Meta:
         model = Invitation
         fields = ["email", "role"]
-        labels = {"email": "E-mail convidado", "role": "Perfil após o aceite"}
+        labels = {"email": "E-mail convidado (opcional)", "role": "Perfil após o aceite"}
+        help_texts = {
+            "email": "Se preencher, só esse e-mail consegue usar o link. Se deixar em branco, qualquer pessoa com o link pode entrar."
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["email"].required = False
         self.fields["role"].choices = [
             (Membership.Role.MEMBER, "Membro"),
             (Membership.Role.GUEST, "Convidado"),
         ]
-
-
-class MembershipRequestForm(forms.ModelForm):
-    class Meta:
-        model = MembershipRequest
-        fields = ["message"]
-        labels = {"message": "Apresentação opcional"}
-        widgets = {"message": forms.Textarea(attrs={"rows": 4})}
 
 
 class ReviewForm(forms.Form):

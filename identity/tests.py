@@ -53,14 +53,59 @@ class MFATests(TestCase):
         self.assertContains(response, "Ative o segundo fator")
         self.assertTrue(TOTPDevice.objects.filter(user=self.admin, confirmed=False).exists())
 
+    def test_signup_without_invite_is_blocked(self):
+        response = self.client.get(reverse("identity:signup"))
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "somente por convite", status_code=403)
+
+    def _invite_token(self, email=""):
+        from communities.services import create_invitation
+
+        _, raw = create_invitation(
+            community=self.community, email=email, role=Membership.Role.MEMBER, created_by=self.admin
+        )
+        return raw
+
+    def test_signup_with_invite_creates_account_and_membership(self):
+        raw = self._invite_token()
+        response = self.client.post(
+            reverse("identity:signup"),
+            {
+                "username": "novo_membro",
+                "email": "novo@example.invalid",
+                "password1": "Senha-Forte-456",
+                "password2": "Senha-Forte-456",
+                "invite_token": raw,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        user = get_user_model().objects.get(username="novo_membro")
+        membership = Membership.objects.get(community=self.community, user=user)
+        self.assertEqual(membership.status, Membership.Status.ACTIVE)
+
+    def test_signup_with_invalid_invite_is_blocked(self):
+        response = self.client.post(
+            reverse("identity:signup"),
+            {
+                "username": "token_invalido",
+                "email": "invalido@example.invalid",
+                "password1": "Senha-Forte-456",
+                "password2": "Senha-Forte-456",
+                "invite_token": "token-que-nao-existe",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_signup_requires_unique_email_case_insensitively(self):
+        raw = self._invite_token()
         response = self.client.post(
             reverse("identity:signup"),
             {
                 "username": "duplicado",
                 "email": "MEMBRO.MFA@example.invalid",
-                "password1": "Senha-Ficticia-456",
-                "password2": "Senha-Ficticia-456",
+                "password1": "Senha-Forte-456",
+                "password2": "Senha-Forte-456",
+                "invite_token": raw,
             },
         )
         self.assertEqual(response.status_code, 200)

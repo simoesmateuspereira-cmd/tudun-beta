@@ -1,9 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
-from io import StringIO
 
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -96,7 +94,7 @@ class EventViewsTestCase(TestCase):
         response = self.client.get(
             reverse("communities:event_detail", args=[self.community.slug, self.event.slug])
         )
-        self.assertContains(response, "Incluído na assinatura fictícia")
+        self.assertContains(response, "Incluído na assinatura")
         self.assertContains(response, "Capacidade")
         self.assertNotContains(response, "R$")
         self.assertNotContains(response, "Comprar")
@@ -114,7 +112,6 @@ class EventViewsTestCase(TestCase):
         response = self.client.get(reverse("communities:event_detail", args=[self.community.slug, event.slug]))
         self.assertContains(response, "Ingresso adicional")
         self.assertContains(response, "R$ 45,00")
-        self.assertContains(response, "Nenhuma reserva, cobrança ou emissão de ingresso")
 
     def test_anonymous_users_are_redirected_to_login(self):
         for url in (
@@ -154,12 +151,3 @@ class EventViewsTestCase(TestCase):
         self.assertContains(response, self.event.title)
         self.assertNotContains(response, "Não deve aparecer")
         self.assertContains(response, reverse("communities:events", args=[self.community.slug]))
-
-    def test_demo_seed_is_idempotent_and_keeps_five_events(self):
-        output = StringIO()
-        call_command("seed_demo", stdout=output)
-        call_command("seed_demo", stdout=output)
-        community = Community.objects.get(slug="comunidade-ficticia")
-        self.assertEqual(community.events.count(), 5)
-        self.assertEqual(community.events.values("slug").distinct().count(), 5)
-        self.assertIn("5 eventos", output.getvalue())

@@ -3,32 +3,87 @@ import secrets
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import models, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
 
 from audit.services import record_event
 from identity.services import email_is_verified
 
-from .models import Community, Event, Invitation, Membership, MembershipRequest
+from .models import Community, Event, Invitation, Membership
 
 
 class FlowError(Exception):
     pass
 
 
+MEMBER_INVITE_QUOTA = 2
+
+
 def hash_token(raw_token):
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def get_invitation_by_token(raw_token):
+    """Retorna o convite pelo token em texto claro, ou None se não existir."""
+    if not raw_token:
+        return None
+    return Invitation.objects.select_related("community").filter(token_hash=hash_token(raw_token)).first()
+
+
+def is_active_admin(user, community):
+    return Membership.objects.filter(
+        community=community,
+        user=user,
+        status=Membership.Status.ACTIVE,
+        role=Membership.Role.ADMIN,
+    ).exists()
+
+
+def invites_used(community, user):
+    """Convites do membro que já foram aceitos ou ainda estão pendentes (valem na cota)."""
+    return Invitation.objects.filter(
+        community=community,
+        created_by=user,
+        revoked_at__isnull=True,
+    ).filter(
+        models.Q(accepted_at__isnull=False)
+        | models.Q(accepted_at__isnull=True, expired_at__isnull=True, expires_at__gt=timezone.now())
+    ).count()
+
+
+def invite_quota(community, user):
+    """Cota de convites restante. Admin ativo tem convites ilimitados (retorna None)."""
+    if is_active_admin(user, community):
+        return None
+    membership = get_active_membership_cached(user, community)
+    if membership is None:
+        return 0
+    total = MEMBER_INVITE_QUOTA + membership.extra_invites
+    return max(total - invites_used(community, user), 0)
+
+
+def get_active_membership_cached(user, community):
+    return Membership.objects.filter(
+        community=community,
+        user=user,
+        status=Membership.Status.ACTIVE,
+    ).first()
 
 
 def create_invitation(*, community, email, role, created_by, validity_days=7):
     if role not in {Membership.Role.MEMBER, Membership.Role.GUEST}:
         raise FlowError("Perfil de convite inválido.")
+    if not is_active_admin(created_by, community):
+        quota = invite_quota(community, created_by)
+        if quota is not None and quota <= 0:
+            raise FlowError("Você já usou todos os seus convites. Peça ao administrador para liberar mais.")
     raw_token = secrets.token_urlsafe(32)
     with transaction.atomic():
         invitation = Invitation.objects.create(
             community=community,
-            email=email.strip().lower(),
+            email=(email or "").strip().lower(),
             role=role,
             token_hash=hash_token(raw_token),
             expires_at=timezone.now() + timedelta(days=validity_days),
@@ -39,7 +94,7 @@ def create_invitation(*, community, email, role, created_by, validity_days=7):
             action="invitation.created",
             target=invitation,
             community=community,
-            details={"email_domain": invitation.email.split("@")[-1], "role": role},
+            details={"email_domain": invitation.email.split("@")[-1] if invitation.email else "", "role": role},
         )
     return invitation, raw_token
 
@@ -56,7 +111,7 @@ def accept_invitation(*, raw_token, user):
             raise FlowError("Convite não encontrado.")
         if invitation.revoked_at or invitation.accepted_at or invitation.expired_at or invitation.expires_at <= timezone.now():
             raise FlowError("Este convite não está mais disponível.")
-        if invitation.email.lower() != user.email.lower():
+        if invitation.email and invitation.email.lower() != user.email.lower():
             raise FlowError("Entre com a conta que usa o e-mail convidado.")
 
         membership, _ = Membership.objects.select_for_update().get_or_create(
@@ -77,65 +132,6 @@ def accept_invitation(*, raw_token, user):
             details={"role": membership.role, "status": membership.status},
         )
         return membership
-
-
-def request_membership(*, community, user, message=""):
-    if Membership.objects.filter(community=community, user=user, status=Membership.Status.ACTIVE).exists():
-        raise FlowError("Você já participa desta comunidade.")
-    with transaction.atomic():
-        request_obj, _ = MembershipRequest.objects.select_for_update().get_or_create(
-            community=community,
-            user=user,
-            defaults={"message": message},
-        )
-        request_obj.message = message
-        request_obj.status = MembershipRequest.Status.PENDING
-        request_obj.reviewed_by = None
-        request_obj.reviewed_at = None
-        request_obj.review_reason = ""
-        request_obj.save()
-        record_event(actor=user, action="membership.requested", target=request_obj, community=community)
-        return request_obj
-
-
-def review_membership_request(*, request_obj, reviewer, approve, reason=""):
-    with transaction.atomic():
-        request_obj = MembershipRequest.objects.select_for_update().select_related("community", "user").get(
-            pk=request_obj.pk
-        )
-        if request_obj.status != MembershipRequest.Status.PENDING:
-            raise FlowError("Esta solicitação já foi analisada.")
-        request_obj.reviewed_by = reviewer
-        request_obj.reviewed_at = timezone.now()
-        request_obj.review_reason = reason
-        if approve:
-            request_obj.status = MembershipRequest.Status.APPROVED
-            membership, _ = Membership.objects.select_for_update().get_or_create(
-                community=request_obj.community,
-                user=request_obj.user,
-                defaults={"role": Membership.Role.MEMBER, "status": Membership.Status.PENDING},
-            )
-            membership.activate(Membership.Role.MEMBER)
-            membership.save()
-        else:
-            request_obj.status = MembershipRequest.Status.DECLINED
-            membership, _ = Membership.objects.get_or_create(
-                community=request_obj.community,
-                user=request_obj.user,
-                defaults={"role": Membership.Role.MEMBER, "status": Membership.Status.DECLINED},
-            )
-            if membership.status == Membership.Status.PENDING:
-                membership.status = Membership.Status.DECLINED
-                membership.save()
-        request_obj.save()
-        record_event(
-            actor=reviewer,
-            action="membership.approved" if approve else "membership.declined",
-            target=request_obj,
-            community=request_obj.community,
-            details={"status": request_obj.status, "reason": reason},
-        )
-        return request_obj
 
 
 def _protect_last_admin(membership):
@@ -293,5 +289,27 @@ def change_membership_role(*, membership, actor, new_role):
             target=membership,
             community=membership.community,
             details={"role": new_role, "status": membership.status},
+        )
+        return membership
+
+
+def grant_extra_invites(*, membership, actor, amount=1):
+    if not is_active_admin(actor, membership.community):
+        raise FlowError("Somente o administrador pode liberar convites extras.")
+    if membership.status != Membership.Status.ACTIVE:
+        raise FlowError("Só é possível liberar convites para vínculos ativos.")
+    if amount < 1 or amount > 50:
+        raise FlowError("Quantidade inválida.")
+    with transaction.atomic():
+        membership = Membership.objects.select_for_update().select_related("community", "user").get(pk=membership.pk)
+        previous = membership.extra_invites
+        membership.extra_invites = previous + amount
+        membership.save(update_fields=["extra_invites", "updated_at"])
+        record_event(
+            actor=actor,
+            action="membership.extra_invites_granted",
+            target=membership,
+            community=membership.community,
+            details={"user": membership.user.username, "previous": previous, "added": amount, "total": membership.extra_invites},
         )
         return membership

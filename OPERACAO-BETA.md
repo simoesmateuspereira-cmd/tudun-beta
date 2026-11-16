@@ -84,7 +84,7 @@ Executar a release em uma única instância antes de direcionar tráfego:
 python scripts/production.py --host 0.0.0.0 --port 8000
 ```
 
-O comando aplica migrações, coleta estáticos e inicia Waitress. Em plataformas com release separado, separar migrações/coleta do processo web para evitar execução concorrente. Não executar `seed_demo` em dados reais.
+O comando aplica migrações, coleta estáticos e inicia Waitress. Em plataformas com release separado, separar migrações/coleta do processo web para evitar execução concorrente. Não executar `seed_demo` (removido — o cadastro agora é somente por convite) em dados reais.
 
 Após a release, verificar `/saude/`, HTTPS, cookies, SMTP real, Redis compartilhado, contas de cada papel, isolamento, gestão de eventos e provisionamento controlado. Anexar data e evidência ao controle de lançamento.
 

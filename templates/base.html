@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="TUDUN — ambiente fictício de comunidades privadas.">
+  <meta name="description" content="TUDUN — comunidade privada, entrada por convite.">
   <title>{% block title %}TUDUN{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'tudun.css' %}">
 </head>
@@ -12,7 +12,6 @@
   <header class="site-header">
     <div class="shell header-inner">
       <a class="brand" href="{% url 'communities:home' %}" aria-label="TUDUN, página inicial"><span class="brand-mark" aria-hidden="true">T</span><span>TUDUN</span></a>
-      <span class="environment">AMBIENTE DE TESTE</span>
       <nav class="main-nav" aria-label="Navegação principal">
         {% if user.is_authenticated %}
           {% if user.is_superuser %}<a href="{% url 'communities:create' %}">Nova comunidade</a>{% endif %}
@@ -20,7 +19,6 @@
           <form method="post" action="{% url 'identity:logout' %}">{% csrf_token %}<button class="link-button" type="submit">Sair</button></form>
         {% else %}
           <a href="{% url 'identity:login' %}">Entrar</a>
-          <a class="button button-small" href="{% url 'identity:signup' %}">Criar conta fictícia</a>
         {% endif %}
       </nav>
     </div>
@@ -29,6 +27,6 @@
     {% if messages %}<div class="messages" aria-live="polite">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
     {% block content %}{% endblock %}
   </main>
-  <footer class="shell site-footer"><span>TUDUN · Beta fechado local</span><a href="{% url 'identity:privacy' %}">Privacidade</a><span>Dados fictícios · sem pagamentos ou eventos reais</span></footer>
+  <footer class="shell site-footer"><span>TUDUN · Comunidade fechada</span><a href="{% url 'identity:privacy' %}">Privacidade</a><span>Entrada somente por convite</span></footer>
 </body>
 </html>

@@ -11,11 +11,14 @@ from django.core import signing
 from django.db import IntegrityError
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django_otp import login as otp_login
 from django_otp import match_token
 from django_otp.plugins.otp_static.models import StaticDevice, StaticToken
 from django_otp.plugins.otp_totp.models import TOTPDevice
+
+from communities.services import FlowError, accept_invitation, get_invitation_by_token
 
 from .forms import SignUpForm, TokenForm
 from .middleware import user_requires_mfa
@@ -35,10 +38,27 @@ class SignOutView(LogoutView):
     next_page = reverse_lazy("communities:home")
 
 
+def _invitation_is_usable(invitation):
+    if invitation is None:
+        return False
+    return (
+        invitation.revoked_at is None
+        and invitation.accepted_at is None
+        and invitation.expired_at is None
+        and invitation.expires_at > timezone.now()
+    )
+
+
 @rate_limit(rate="5/m")
 def signup(request):
     if request.user.is_authenticated:
         return redirect("communities:home")
+
+    raw_token = request.POST.get("invite_token") or request.GET.get("convite") or ""
+    invitation = get_invitation_by_token(raw_token)
+    if not _invitation_is_usable(invitation):
+        return render(request, "identity/signup_closed.html", status=403)
+
     form = SignUpForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         try:
@@ -47,16 +67,26 @@ def signup(request):
             form.add_error("email", "Já existe uma conta com este e-mail.")
         else:
             profile_for(user)
-            login(request, user)
             try:
-                send_verification_email(user=user, request=request)
-            except Exception:
-                logger.exception("Falha no envio de verificação para user_id=%s", user.pk)
-                messages.warning(request, "Conta criada, mas o envio falhou. Use a opção de reenvio.")
+                membership = accept_invitation(raw_token=raw_token, user=user)
+            except FlowError as exc:
+                user.delete()
+                form.add_error(None, str(exc))
             else:
-                messages.success(request, "Conta criada. Confira a caixa de e-mail para confirmar o endereço.")
-            return redirect("identity:verification_pending")
-    return render(request, "identity/signup.html", {"form": form})
+                login(request, user)
+                try:
+                    send_verification_email(user=user, request=request)
+                except Exception:
+                    logger.exception("Falha no envio de verificação para user_id=%s", user.pk)
+                    messages.warning(request, "Conta criada, mas o envio do e-mail de confirmação falhou. Use a opção de reenvio.")
+                else:
+                    messages.success(request, f"Bem-vindo(a) à {membership.community.name}! Confira a caixa de e-mail para confirmar o endereço.")
+                return redirect("communities:detail", slug=membership.community.slug)
+    return render(
+        request,
+        "identity/signup.html",
+        {"form": form, "invite_token": raw_token, "community": invitation.community},
+    )
 
 
 @login_required

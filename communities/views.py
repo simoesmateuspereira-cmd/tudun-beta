@@ -1,13 +1,13 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.mail import send_mail
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
 from audit.models import AuditEvent
 from audit.services import record_event
-from identity.decorators import email_verified_required
 from identity.ratelimit import rate_limit
 from identity.services import email_is_verified
 
@@ -15,13 +15,11 @@ from .forms import (
     CommunityForm,
     EventForm,
     InvitationForm,
-    MembershipRequestForm,
     MembershipRoleForm,
     NoticeForm,
-    ReviewForm,
 )
-from .models import Community, Event, Invitation, Membership, MembershipRequest, Notice
-from .permissions import get_active_membership, require_permission
+from .models import Community, Event, Invitation, Membership, Notice
+from .permissions import get_active_membership, is_community_admin, require_permission
 from .services import (
     FlowError,
     accept_invitation,
@@ -30,9 +28,9 @@ from .services import (
     change_membership_status,
     create_event,
     create_invitation,
+    grant_extra_invites,
+    invite_quota,
     provision_community,
-    request_membership,
-    review_membership_request,
     update_event,
 )
 
@@ -176,28 +174,9 @@ def event_cancel(request, slug, event_slug):
     )
 
 
-@login_required
-@email_verified_required
-@rate_limit(rate="5/m", key="user_or_ip")
-def membership_request_create(request, slug):
-    community = get_object_or_404(Community, slug=slug)
-    if get_active_membership(request.user, community):
-        return redirect("communities:detail", slug=slug)
-    form = MembershipRequestForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            request_membership(community=community, user=request.user, message=form.cleaned_data["message"])
-        except FlowError as exc:
-            form.add_error(None, str(exc))
-        else:
-            messages.success(request, "Solicitação enviada. A comunidade foi avisada para revisão.")
-            return redirect("communities:home")
-    return render(request, "communities/request_form.html", {"community": community, "form": form})
-
-
-@login_required
-@email_verified_required
 def invitation_accept(request, token):
+    if not request.user.is_authenticated:
+        return redirect(f"{reverse('identity:signup')}?convite={token}")
     if request.method == "POST":
         try:
             membership = accept_invitation(raw_token=token, user=request.user)
@@ -224,40 +203,85 @@ def members(request, slug):
 @rate_limit(rate="10/m", key="user_or_ip")
 def invitations(request, slug):
     community = get_object_or_404(Community, slug=slug)
-    require_permission(request.user, community, "admin")
+    require_permission(request.user, community, "view")
+    membership = get_active_membership(request.user, community)
+    quota = invite_quota(community, request.user)
     form = InvitationForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        invitation, raw_token = create_invitation(
-            community=community,
-            email=form.cleaned_data["email"],
-            role=form.cleaned_data["role"],
-            created_by=request.user,
-        )
-        accept_url = request.build_absolute_uri(reverse("communities:accept_invitation", kwargs={"token": raw_token}))
-        send_mail(
-            subject=f"Convite de teste para {community.name}",
-            message=(
-                f"Você recebeu um convite fictício para {community.name}.\n\n"
-                f"Acesse: {accept_url}\n\n"
-                f"O convite expira em {invitation.expires_at:%d/%m/%Y %H:%M}."
-            ),
-            from_email=None,
-            recipient_list=[invitation.email],
-        )
-        messages.success(request, "Convite criado. O e-mail fictício foi gravado na caixa local de desenvolvimento.")
-        return redirect("communities:invitations", slug=slug)
+        try:
+            invitation, raw_token = create_invitation(
+                community=community,
+                email=form.cleaned_data["email"],
+                role=form.cleaned_data["role"],
+                created_by=request.user,
+            )
+        except FlowError as exc:
+            form.add_error(None, str(exc))
+        else:
+            accept_url = request.build_absolute_uri(reverse("communities:accept_invitation", kwargs={"token": raw_token}))
+            request.session["last_invite_link"] = accept_url
+            if invitation.email:
+                try:
+                    send_mail(
+                        subject=f"Você foi convidado(a) para {community.name}",
+                        message=(
+                            f"Você recebeu um convite para participar da comunidade {community.name}.\n\n"
+                            f"Acesse: {accept_url}\n\n"
+                            f"O convite expira em {invitation.expires_at:%d/%m/%Y %H:%M}."
+                        ),
+                        from_email=None,
+                        recipient_list=[invitation.email],
+                    )
+                except Exception:
+                    messages.warning(request, "Convite criado, mas o envio do e-mail falou. Copie o link abaixo e envie por sua conta.")
+                else:
+                    messages.success(request, "Convite criado e e-mail enviado.")
+            else:
+                messages.success(request, "Convite criado. Copie o link abaixo e envie para a pessoa.")
+            return redirect("communities:invitations", slug=slug)
+    my_invitations = community.invitations.filter(created_by=request.user)
+    last_link = request.session.pop("last_invite_link", None)
     return render(
         request,
         "communities/invitations.html",
-        {"community": community, "form": form, "invitations": community.invitations.all()},
+        {
+            "community": community,
+            "membership": membership,
+            "form": form,
+            "quota": quota,
+            "last_link": last_link,
+            "invitations": my_invitations,
+        },
     )
+
+
+@login_required
+@rate_limit(rate="10/m", key="user_or_ip")
+def membership_extra_invites(request, slug, pk):
+    community = get_object_or_404(Community, slug=slug)
+    require_permission(request.user, community, "admin")
+    membership = get_object_or_404(Membership, pk=pk, community=community)
+    if request.method == "POST":
+        try:
+            amount = int(request.POST.get("amount", "1"))
+        except ValueError:
+            amount = 0
+        try:
+            grant_extra_invites(membership=membership, actor=request.user, amount=amount)
+        except FlowError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(request, f"Convite extra liberado para {membership.user.username}.")
+    return redirect("communities:members", slug=slug)
 
 
 @login_required
 def invitation_revoke(request, slug, pk):
     community = get_object_or_404(Community, slug=slug)
-    require_permission(request.user, community, "admin")
+    require_permission(request.user, community, "view")
     invitation = get_object_or_404(Invitation, pk=pk, community=community)
+    if invitation.created_by != request.user and not is_community_admin(request.user, community):
+        raise PermissionDenied("Você só pode revogar os seus próprios convites.")
     if request.method == "POST":
         if invitation.accepted_at or invitation.revoked_at or invitation.expired_at:
             messages.error(request, "Este convite não pode ser revogado.")
@@ -268,51 +292,6 @@ def invitation_revoke(request, slug, pk):
             messages.success(request, "Convite revogado.")
         return redirect("communities:invitations", slug=slug)
     return render(request, "communities/confirm.html", {"community": community, "object": invitation, "action_label": "Revogar convite"})
-
-
-@login_required
-def requests_list(request, slug):
-    community = get_object_or_404(Community, slug=slug)
-    require_permission(request.user, community, "review")
-    return render(
-        request,
-        "communities/requests.html",
-        {
-            "community": community,
-            "pending_requests": community.membership_requests.filter(status=MembershipRequest.Status.PENDING).select_related("user"),
-            "reviewed_requests": community.membership_requests.exclude(status=MembershipRequest.Status.PENDING).select_related("user"),
-        },
-    )
-
-
-@login_required
-def request_review(request, slug, pk, decision):
-    community = get_object_or_404(Community, slug=slug)
-    require_permission(request.user, community, "review")
-    request_obj = get_object_or_404(MembershipRequest, pk=pk, community=community)
-    approve = decision == "aprovar"
-    if decision not in {"aprovar", "recusar"}:
-        messages.error(request, "Decisão inválida.")
-        return redirect("communities:requests", slug=slug)
-    form = ReviewForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            review_membership_request(
-                request_obj=request_obj,
-                reviewer=request.user,
-                approve=approve,
-                reason=form.cleaned_data["reason"],
-            )
-        except FlowError as exc:
-            form.add_error(None, str(exc))
-        else:
-            messages.success(request, "Solicitação aprovada." if approve else "Solicitação recusada.")
-            return redirect("communities:requests", slug=slug)
-    return render(
-        request,
-        "communities/request_review.html",
-        {"community": community, "request_obj": request_obj, "form": form, "approve": approve},
-    )
 
 
 @login_required

@@ -6,7 +6,6 @@
     <span class="eyebrow">GESTÃO DA AGENDA</span>
     <h1>{% if is_edit %}Editar evento{% else %}Novo evento{% endif %}</h1>
     <p>{% if is_edit %}Atualize as informações apresentadas aos participantes.{% else %}Preencha os dados para publicar uma experiência na agenda da comunidade.{% endif %}</p>
-    <div class="environment-notice">Neste ambiente, preços e assinaturas são apenas demonstrações. Nenhuma cobrança ou reserva será realizada.</div>
     <form method="post" class="event-management-form">
       {% csrf_token %}
       {% include 'partials/form.html' %}

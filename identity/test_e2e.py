@@ -11,8 +11,8 @@ from django_otp.oath import totp
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from playwright.sync_api import expect, sync_playwright
 
-from communities.models import Community, Invitation, Membership, MembershipRequest
-from communities.services import create_invitation, request_membership
+from communities.models import Community, Invitation, Membership
+from communities.services import create_invitation
 
 from .models import IdentityProfile
 
@@ -109,9 +109,9 @@ class CriticalJourneysE2ETests(StaticLiveServerTestCase):
         self.page.goto(self.url("communities:invitations", self.community.slug))
         self.page.locator('input[name="email"]').fill(self.applicant.email)
         self.page.locator('select[name="role"]').select_option(Membership.Role.MEMBER)
-        self.page.get_by_role("button", name="Criar e enviar convite fictício").click()
+        self.page.get_by_role("button", name="Criar convite").click()
 
-        expect(self.page.get_by_text("Convite criado.", exact=False)).to_be_visible()
+        expect(self.page.get_by_text("Convite criado", exact=False)).to_be_visible()
         invitation = Invitation.objects.get(community=self.community, email=self.applicant.email)
         self.assertEqual(invitation.state, "pendente")
         self.assertEqual(len(mail.outbox), 1)
@@ -141,43 +141,41 @@ class CriticalJourneysE2ETests(StaticLiveServerTestCase):
         response = self.page.goto(self.url("communities:detail", self.other.slug))
         self.assertEqual(response.status, 403)
 
-    def test_moderator_approves_request_but_cannot_use_admin_routes(self):
-        request_obj = request_membership(
-            community=self.community,
-            user=self.applicant,
-            message="Quero participar do teste E2E.",
-        )
-        self.login(self.moderator.username)
-        self.page.goto(self.url("communities:requests", self.community.slug))
-        expect(self.page.get_by_text(self.applicant.username, exact=True)).to_be_visible()
-        self.page.get_by_role("link", name="Aprovar", exact=True).click()
-        self.page.locator('textarea[name="reason"]').fill("Aprovado na jornada E2E.")
-        self.page.get_by_role("button", name="Confirmar decisão").click()
+    def test_member_creates_open_invite_link_but_cannot_access_audit(self):
+        self.login(self.member.username)
+        self.page.goto(self.url("communities:invitations", self.community.slug))
+        expect(self.page.get_by_text("2 convites", exact=False)).to_be_visible()
+        self.page.locator('select[name="role"]').select_option(Membership.Role.MEMBER)
+        self.page.get_by_role("button", name="Criar convite").click()
 
-        expect(self.page).to_have_url(self.url("communities:requests", self.community.slug))
-        expect(self.page.get_by_text("Solicitação aprovada.", exact=False)).to_be_visible()
-        request_obj.refresh_from_db()
-        self.assertEqual(request_obj.status, MembershipRequest.Status.APPROVED)
-        self.assertEqual(request_obj.reviewed_by, self.moderator)
-        membership = Membership.objects.get(community=self.community, user=self.applicant)
-        self.assertEqual(membership.status, Membership.Status.ACTIVE)
+        expect(self.page.get_by_text("Convite criado", exact=False)).to_be_visible()
+        invitation = Invitation.objects.get(community=self.community, created_by=self.member)
+        self.assertEqual(invitation.state, "pendente")
+        expect(self.page.get_by_text("Link do último convite", exact=False)).to_be_visible()
+        expect(self.page.locator(".invite-link code")).to_contain_text("/convites/")
 
-        for route in ("communities:invitations", "communities:audit"):
-            response = self.page.goto(self.url(route, self.community.slug))
-            self.assertEqual(response.status, 403)
+        response = self.page.goto(self.url("communities:audit", self.community.slug))
+        self.assertEqual(response.status, 403)
 
-    def test_signup_and_email_verification_run_in_browser_with_static_assets(self):
+    def test_signup_via_invite_and_email_verification_run_in_browser_with_static_assets(self):
         css_response = self.page.request.get(self.live_server_url + "/static/tudun.css")
         self.assertEqual(css_response.status, 200)
-        self.page.goto(self.url("identity:signup"))
+        _, raw_token = create_invitation(
+            community=self.community,
+            email="",
+            role=Membership.Role.MEMBER,
+            created_by=self.admin,
+        )
+        self.page.goto(f"{self.url('identity:signup')}?convite={raw_token}")
         self.page.locator('input[name="username"]').fill("nova_e2e")
         self.page.locator('input[name="email"]').fill("Nova.E2E@example.invalid")
         self.page.locator('input[name="password1"]').fill("Senha-Ficticia-456")
         self.page.locator('input[name="password2"]').fill("Senha-Ficticia-456")
-        self.page.get_by_role("button", name="Criar conta", exact=True).click()
+        self.page.get_by_role("button", name="Criar conta e entrar", exact=True).click()
 
-        expect(self.page).to_have_url(self.url("identity:verification_pending"))
-        expect(self.page.get_by_role("heading", name="Confirme seu e-mail")).to_be_visible()
+        expect(self.page).to_have_url(self.url("communities:detail", self.community.slug))
+        membership = Membership.objects.get(community=self.community, user__username="nova_e2e")
+        self.assertEqual(membership.status, Membership.Status.ACTIVE)
         self.assertEqual(len(mail.outbox), 1)
         verification_url = mail.outbox[0].body.split("Acesse: ", 1)[1].splitlines()[0]
         self.page.goto(verification_url)
@@ -185,3 +183,7 @@ class CriticalJourneysE2ETests(StaticLiveServerTestCase):
         user = get_user_model().objects.get(username="nova_e2e")
         self.assertEqual(user.email, "nova.e2e@example.invalid")
         self.assertIsNotNone(user.identity_profile.email_verified_at)
+
+    def test_signup_page_without_invite_shows_closed_message(self):
+        self.page.goto(self.url("identity:signup"))
+        expect(self.page.get_by_role("heading", name="Entrada somente por convite")).to_be_visible()

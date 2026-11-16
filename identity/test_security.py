@@ -29,20 +29,31 @@ class EmailVerificationTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user("verificar", "Verificar@Example.Invalid", PASSWORD)
 
-    def signup_data(self, username="novo_beta", email="Novo.Beta@Example.Invalid"):
+    def signup_data(self, username="novo_beta", email="Novo.Beta@Example.Invalid", invite_token=""):
         return {
             "username": username,
             "email": email,
             "password1": "Senha-Ficticia-456",
             "password2": "Senha-Ficticia-456",
+            "invite_token": invite_token,
         }
 
+    def _invite(self, community, creator, email=""):
+        _, raw = create_invitation(community=community, email=email, role=Membership.Role.MEMBER, created_by=creator)
+        return raw
+
     def test_signup_normalizes_email_sends_link_and_verifies_account(self):
-        response = self.client.post(reverse("identity:signup"), self.signup_data())
-        self.assertRedirects(response, reverse("identity:verification_pending"))
+        community = Community.objects.create(name="Verificação", slug="verificacao", created_by=self.user)
+        Membership.objects.create(
+            community=community, user=self.user, role=Membership.Role.ADMIN, status=Membership.Status.ACTIVE
+        )
+        raw = self._invite(community, self.user)
+        response = self.client.post(reverse("identity:signup"), self.signup_data(invite_token=raw))
+        self.assertRedirects(response, reverse("communities:detail", args=[community.slug]))
         user = get_user_model().objects.get(username="novo_beta")
         self.assertEqual(user.email, "novo.beta@example.invalid")
         self.assertIsNone(user.identity_profile.email_verified_at)
+        self.assertTrue(Membership.objects.filter(community=community, user=user).exists())
         self.assertEqual(len(mail.outbox), 1)
         match = re.search(r"Acesse: (\S+)", mail.outbox[0].body)
         self.assertIsNotNone(match)
@@ -67,18 +78,18 @@ class EmailVerificationTests(TestCase):
         response = self.client.get(reverse("identity:verify_email", args=["token-adulterado"]), follow=True)
         self.assertContains(response, "link de verificação é inválido")
 
-    def test_unverified_user_cannot_accept_invitation(self):
+    def test_unverified_user_can_accept_invitation_and_verifies_email_later(self):
         community = Community.objects.create(name="Fechada", slug="fechada", created_by=self.user)
-        _, raw = create_invitation(
-            community=community,
-            email=self.user.email,
-            role=Membership.Role.MEMBER,
-            created_by=self.user,
+        Membership.objects.create(
+            community=community, user=self.user, role=Membership.Role.MEMBER, status=Membership.Status.ACTIVE
         )
+        raw = self._invite(community, self.user)
         self.client.force_login(self.user)
         response = self.client.get(reverse("communities:accept_invitation", args=[raw]))
-        self.assertRedirects(response, reverse("identity:verification_pending"))
-        self.assertFalse(Membership.objects.filter(community=community, user=self.user).exists())
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(reverse("communities:accept_invitation", args=[raw]))
+        self.assertRedirects(response, reverse("communities:detail", args=[community.slug]))
+        self.assertTrue(Membership.objects.filter(community=community, user=self.user).exists())
 
     def test_database_rejects_duplicate_email_with_different_case(self):
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -136,10 +147,10 @@ class HealthPrivacyAndLogTests(TestCase):
         self.assertNotContains(response, "detalhe interno", status_code=503)
         self.assertEqual(response.json()["status"], "indisponivel")
 
-    def test_privacy_page_states_local_retention_limits(self):
+    def test_privacy_page_states_retention_and_invite_only_access(self):
         response = self.client.get(reverse("identity:privacy"))
-        self.assertContains(response, "Não há exclusão automática nesta etapa.")
-        self.assertContains(response, "revisão com Karine")
+        self.assertContains(response, "sempre iniciada por um convite")
+        self.assertContains(response, "solicitar a exclusão")
 
     def test_access_log_redacts_invitation_and_verification_tokens(self):
         record = logging.LogRecord(

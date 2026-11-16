@@ -46,9 +46,9 @@ def send_verification_email(*, user, request):
     token = base64.urlsafe_b64encode(signed_token.encode("ascii")).decode("ascii").rstrip("=")
     verification_url = request.build_absolute_uri(reverse("identity:verify_email", kwargs={"token": token}))
     send_mail(
-        subject="Confirme seu e-mail de teste no TUDUN",
+        subject="Confirme seu e-mail no TUDUN",
         message=(
-            "Confirme o e-mail da sua conta no ambiente de teste do TUDUN.\n\n"
+            "Confirme o e-mail da sua conta no TUDUN.\n\n"
             f"Acesse: {verification_url}\n\n"
             f"Este link expira em {settings.EMAIL_VERIFICATION_MAX_AGE // 3600} horas. "
             "Se você não criou esta conta, ignore esta mensagem."

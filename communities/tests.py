@@ -11,15 +11,15 @@ from django_otp.plugins.otp_totp.models import TOTPDevice
 from audit.models import AuditEvent
 from audit.services import record_event
 
-from .models import Community, Invitation, Membership, MembershipRequest, Notice
+from .models import Community, Invitation, Membership, Notice
 from .services import (
     FlowError,
     accept_invitation,
     change_membership_role,
     change_membership_status,
     create_invitation,
-    request_membership,
-    review_membership_request,
+    grant_extra_invites,
+    invite_quota,
 )
 
 
@@ -56,25 +56,47 @@ class CommunityTestCase(TestCase):
     def test_uses_real_postgresql(self):
         self.assertEqual(connection.vendor, "postgresql")
 
-    def test_request_approval_activates_membership_and_audit(self):
-        request_obj = request_membership(community=self.community, user=self.outsider, message="Teste")
-        review_membership_request(request_obj=request_obj, reviewer=self.moderator, approve=True)
-        request_obj.refresh_from_db()
-        membership = Membership.objects.get(community=self.community, user=self.outsider)
-        self.assertEqual(request_obj.status, MembershipRequest.Status.APPROVED)
-        self.assertEqual(membership.status, Membership.Status.ACTIVE)
-        self.assertTrue(AuditEvent.objects.filter(action="membership.approved", target_id=str(request_obj.pk)).exists())
+    def test_member_quota_is_two_invites_and_counts_pending_and_accepted(self):
+        self.assertEqual(invite_quota(self.community, self.member), 2)
+        create_invitation(community=self.community, email="", role=Membership.Role.MEMBER, created_by=self.member)
+        self.assertEqual(invite_quota(self.community, self.member), 1)
+        _, raw = create_invitation(community=self.community, email="", role=Membership.Role.MEMBER, created_by=self.member)
+        self.assertEqual(invite_quota(self.community, self.member), 0)
+        accept_invitation(raw_token=raw, user=self.outsider)
+        self.assertEqual(invite_quota(self.community, self.member), 0)
+        with self.assertRaisesMessage(FlowError, "usou todos"):
+            create_invitation(community=self.community, email="", role=Membership.Role.MEMBER, created_by=self.member)
 
-    def test_request_decline_does_not_grant_access(self):
-        request_obj = request_membership(community=self.community, user=self.outsider)
-        review_membership_request(request_obj=request_obj, reviewer=self.moderator, approve=False, reason="Teste")
-        request_obj.refresh_from_db()
-        membership = Membership.objects.get(community=self.community, user=self.outsider)
-        self.assertEqual(request_obj.status, MembershipRequest.Status.DECLINED)
-        self.assertNotEqual(membership.status, Membership.Status.ACTIVE)
-        self.client.force_login(self.outsider)
-        response = self.client.get(reverse("communities:detail", args=[self.community.slug]))
-        self.assertEqual(response.status_code, 403)
+    def test_admin_has_unlimited_invites(self):
+        self.assertIsNone(invite_quota(self.community, self.admin))
+        for _ in range(4):
+            create_invitation(community=self.community, email="", role=Membership.Role.MEMBER, created_by=self.admin)
+
+    def test_admin_grant_extra_invites_restores_member_quota(self):
+        for _ in range(2):
+            create_invitation(community=self.community, email="", role=Membership.Role.MEMBER, created_by=self.member)
+        membership = Membership.objects.get(community=self.community, user=self.member)
+        grant_extra_invites(membership=membership, actor=self.admin, amount=1)
+        membership.refresh_from_db()
+        self.assertEqual(membership.extra_invites, 1)
+        self.assertEqual(invite_quota(self.community, self.member), 1)
+
+    def test_non_admin_cannot_grant_extra_invites(self):
+        membership = Membership.objects.get(community=self.community, user=self.member)
+        with self.assertRaisesMessage(FlowError, "administrador"):
+            grant_extra_invites(membership=membership, actor=self.moderator, amount=1)
+
+    def test_invitation_without_email_accepts_any_user(self):
+        _, raw = create_invitation(community=self.community, email="", role=Membership.Role.MEMBER, created_by=self.admin)
+        membership = accept_invitation(raw_token=raw, user=self.outsider)
+        self.assertEqual(membership.status, Membership.Status.ACTIVE)
+
+    def test_expired_invite_does_not_consume_quota(self):
+        invitation, _ = create_invitation(community=self.community, email="", role=Membership.Role.MEMBER, created_by=self.member)
+        Invitation.objects.filter(pk=invitation.pk).update(
+            expires_at=timezone.now() - timedelta(seconds=1), expired_at=timezone.now()
+        )
+        self.assertEqual(invite_quota(self.community, self.member), 2)
 
     def test_private_communities_are_isolated(self):
         self.client.force_login(self.member)
@@ -84,27 +106,43 @@ class CommunityTestCase(TestCase):
         self.assertEqual(denied.status_code, 403)
         self.assertNotContains(allowed, self.other.name)
 
-    def test_member_and_guest_cannot_manage_or_moderate(self):
+    def test_member_and_guest_can_invite_but_not_manage(self):
         for user in (self.member, self.guest):
             self.client.force_login(user)
             self.assertEqual(self.client.get(reverse("communities:detail", args=["alfa"])).status_code, 200)
             self.assertEqual(self.client.get(reverse("communities:members", args=["alfa"])).status_code, 403)
-            self.assertEqual(self.client.get(reverse("communities:requests", args=["alfa"])).status_code, 403)
-            self.assertEqual(self.client.get(reverse("communities:invitations", args=["alfa"])).status_code, 403)
+            self.assertEqual(self.client.get(reverse("communities:invitations", args=["alfa"])).status_code, 200)
             self.assertEqual(self.client.get(reverse("communities:notice_create", args=["alfa"])).status_code, 403)
 
-    def test_moderator_reviews_and_publishes_but_does_not_administer(self):
+    def test_moderator_reviews_members_and_publishes_but_does_not_administer(self):
         self.client.force_login(self.moderator)
         self.assertEqual(self.client.get(reverse("communities:members", args=["alfa"])).status_code, 200)
-        self.assertEqual(self.client.get(reverse("communities:requests", args=["alfa"])).status_code, 200)
         self.assertEqual(self.client.get(reverse("communities:notice_create", args=["alfa"])).status_code, 200)
-        self.assertEqual(self.client.get(reverse("communities:invitations", args=["alfa"])).status_code, 403)
+        self.assertEqual(self.client.get(reverse("communities:invitations", args=["alfa"])).status_code, 200)
         self.assertEqual(self.client.get(reverse("communities:audit", args=["alfa"])).status_code, 403)
 
     def test_verified_admin_can_access_administration(self):
         self.verified_login(self.admin)
         for route in ("invitations", "members", "audit"):
             self.assertEqual(self.client.get(reverse(f"communities:{route}", args=["alfa"])).status_code, 200)
+
+    def test_admin_grants_extra_invite_via_endpoint(self):
+        self.verified_login(self.admin)
+        membership = Membership.objects.get(community=self.community, user=self.member)
+        response = self.client.post(
+            reverse("communities:membership_extra_invites", args=["alfa", membership.pk]), {"amount": "2"}
+        )
+        self.assertRedirects(response, reverse("communities:members", args=["alfa"]))
+        membership.refresh_from_db()
+        self.assertEqual(membership.extra_invites, 2)
+
+    def test_member_cannot_grant_extra_invites_via_endpoint(self):
+        self.client.force_login(self.member)
+        target = Membership.objects.get(community=self.community, user=self.guest)
+        response = self.client.post(
+            reverse("communities:membership_extra_invites", args=["alfa", target.pk]), {"amount": "1"}
+        )
+        self.assertEqual(response.status_code, 403)
 
     def test_valid_invitation_activates_expected_role(self):
         invitation, raw = create_invitation(

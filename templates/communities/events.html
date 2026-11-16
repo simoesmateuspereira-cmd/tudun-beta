@@ -10,7 +10,6 @@
   {% if can_moderate %}<a class="button" href="{% url 'communities:event_create' community.slug %}">Novo evento</a>{% endif %}
 </section>
 {% include 'partials/community_nav.html' %}
-<div class="environment-notice">Ambiente de demonstração: os eventos e valores são fictícios. Reservas, pagamentos e check-in não estão habilitados.</div>
 {% if events %}
   <div class="event-grid event-catalog">
     {% for event in events %}

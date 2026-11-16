@@ -9,7 +9,7 @@ class SignUpForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = get_user_model()
         fields = ("username", "email")
-        labels = {"username": "Usuário de teste"}
+        labels = {"username": "Usuário"}
 
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()

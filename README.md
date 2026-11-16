@@ -101,7 +101,7 @@ Em uma única release, antes de direcionar tráfego:
 .venv/Scripts/python scripts/production.py --host 0.0.0.0 --port 8000
 ```
 
-O comando aplica migrações, coleta estáticos e inicia Waitress. Se a plataforma separar release e processo web, execute migrações/coleta apenas uma vez. Não execute `seed_demo` com dados reais. Nenhum provedor foi contratado ou validado nesta etapa.
+O comando aplica migrações, coleta estáticos e inicia Waitress. Se a plataforma separar release e processo web, execute migrações/coleta apenas uma vez. Não execute `seed_demo` (removido — o cadastro agora é somente por convite) com dados reais. Nenhum provedor foi contratado ou validado nesta etapa.
 
 ## Verificações executadas
 

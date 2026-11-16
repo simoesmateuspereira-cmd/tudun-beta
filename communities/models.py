@@ -50,6 +50,7 @@ class Membership(TimeStampedModel):
     role = models.CharField("perfil", max_length=20, choices=Role.choices, default=Role.MEMBER)
     status = models.CharField("situação", max_length=20, choices=Status.choices, default=Status.PENDING)
     joined_at = models.DateTimeField("entrada", null=True, blank=True)
+    extra_invites = models.PositiveIntegerField("convites extras", default=0)
 
     class Meta:
         constraints = [
@@ -70,7 +71,7 @@ class Membership(TimeStampedModel):
 
 class Invitation(TimeStampedModel):
     community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="invitations")
-    email = models.EmailField("e-mail")
+    email = models.EmailField("e-mail", blank=True, default="")
     role = models.CharField("perfil", max_length=20, choices=Membership.Role.choices, default=Membership.Role.MEMBER)
     token_hash = models.CharField(max_length=64, unique=True)
     expires_at = models.DateTimeField("expira em")
@@ -158,7 +159,7 @@ class Event(TimeStampedModel):
     starts_at = models.DateTimeField("início")
     ends_at = models.DateTimeField("término")
     capacity = models.PositiveIntegerField("capacidade")
-    price = models.DecimalField("preço fictício", max_digits=10, decimal_places=2, default=0)
+    price = models.DecimalField("preço", max_digits=10, decimal_places=2, default=0)
     included_in_membership = models.BooleanField("incluído na assinatura", default=False)
     status = models.CharField("situação", max_length=20, choices=Status.choices, default=Status.AVAILABLE)
     is_featured = models.BooleanField("destaque", default=False)

@@ -31,7 +31,6 @@
     <span class="eyebrow">SOBRE A EXPERIÊNCIA</span>
     <h2>Um encontro para criar repertório e conexões.</h2>
     <p>{{ event.description|linebreaksbr }}</p>
-    <div class="environment-notice">Evento fictício para demonstração. Nenhuma reserva, cobrança ou emissão de ingresso será realizada.</div>
   </article>
   <aside class="card event-facts" aria-label="Informações do evento">
     <h2>Informações</h2>
@@ -55,7 +54,7 @@
       <div>
         <dt>Acesso</dt>
         {% if event.included_in_membership %}
-          <dd class="discount">Incluído na assinatura fictícia</dd>
+          <dd class="discount">Incluído na assinatura</dd>
         {% else %}
           <dd class="event-detail-price">R$ {{ event.price|floatformat:2 }}</dd>
         {% endif %}
