@@ -11,7 +11,7 @@
 {% include 'partials/community_nav.html' %}
 <div class="feed-layout">
   <div class="card post-composer">
-    <form method="post" action="{% url 'communities:post_create' community.slug %}">
+    <form method="post" action="{% url 'communities:post_create' community.slug %}" enctype="multipart/form-data">
       {% csrf_token %}
       {% include 'partials/form.html' with form=post_form %}
       <button class="button button-full" type="submit">Publicar no mural</button>
@@ -25,6 +25,9 @@
           <span class="post-date">{{ post.created_at|date:'d/m/Y à\s H:i' }}</span>
         </header>
         <p class="post-body">{{ post.body|linebreaksbr }}</p>
+        {% if post.image %}
+          <img class="post-image" src="{% url 'communities:post_image' community.slug post.pk %}" alt="Foto publicada por {{ post.author.username }}" loading="lazy">
+        {% endif %}
         <footer class="post-actions">
           <form method="post" action="{% url 'communities:post_like' community.slug post.pk %}" class="like-form">
             {% csrf_token %}

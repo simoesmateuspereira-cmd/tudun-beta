@@ -21,6 +21,7 @@ urlpatterns = [
     path("comunidades/<slug:slug>/mural/<int:post_id>/curtir/", views.post_like, name="post_like"),
     path("comunidades/<slug:slug>/mural/<int:post_id>/comentar/", views.comment_create, name="comment_create"),
     path("comunidades/<slug:slug>/mural/<int:post_id>/apagar/", views.post_delete, name="post_delete"),
+    path("comunidades/<slug:slug>/mural/<int:post_id>/imagem/", views.post_image, name="post_image"),
     path("comunidades/<slug:slug>/membros/<int:pk>/convites-extras/", views.membership_extra_invites, name="membership_extra_invites"),
     path("comunidades/<slug:slug>/membros/<int:pk>/status/<str:new_status>/", views.membership_status, name="membership_status"),
     path("comunidades/<slug:slug>/membros/<int:pk>/perfil/", views.membership_role, name="membership_role"),

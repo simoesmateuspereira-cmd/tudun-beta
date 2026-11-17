@@ -101,3 +101,79 @@ class FeedViewsTestCase(TestCase):
         self.verified_login(self.admin)
         self.client.post(reverse("communities:post_delete", kwargs={"slug": self.community.slug, "post_id": post.pk}))
         self.assertEqual(Post.objects.count(), 0)
+
+
+class PostImageTestCase(FeedViewsTestCase):
+    @staticmethod
+    def png_bytes():
+        from io import BytesIO
+
+        from PIL import Image
+
+        buffer = BytesIO()
+        Image.new("RGB", (4, 4), (31, 107, 82)).save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    def make_image_file(self, data=None, name="foto.png"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        return SimpleUploadedFile(name, data or self.png_bytes(), content_type="image/png")
+
+    def test_post_with_image_creates_postimage(self):
+        self.client.force_login(self.member)
+        self.client.post(
+            reverse("communities:post_create", kwargs={"slug": self.community.slug}),
+            {"body": "Conquista com foto!", "image": self.make_image_file()},
+        )
+        post = Post.objects.get()
+        self.assertTrue(hasattr(post, "image"))
+        self.assertEqual(post.image.content_type, "image/png")
+
+    def test_feed_renders_image_tag(self):
+        post = Post.objects.create(community=self.community, author=self.member, body="Com foto")
+        from .models import PostImage
+
+        PostImage.objects.create(post=post, data=self.png_bytes(), content_type="image/png", size=len(self.png_bytes()))
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("communities:feed", kwargs={"slug": self.community.slug}))
+        self.assertContains(response, "post-image")
+
+    def test_member_can_view_image(self):
+        post = Post.objects.create(community=self.community, author=self.member, body="Com foto")
+        from .models import PostImage
+
+        PostImage.objects.create(post=post, data=self.png_bytes(), content_type="image/png", size=len(self.png_bytes()))
+        self.client.force_login(self.member)
+        response = self.client.get(
+            reverse("communities:post_image", kwargs={"slug": self.community.slug, "post_id": post.pk})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+
+    def test_outsider_cannot_view_image(self):
+        post = Post.objects.create(community=self.community, author=self.member, body="Com foto")
+        from .models import PostImage
+
+        PostImage.objects.create(post=post, data=self.png_bytes(), content_type="image/png", size=len(self.png_bytes()))
+        self.client.force_login(self.outsider)
+        response = self.client.get(
+            reverse("communities:post_image", kwargs={"slug": self.community.slug, "post_id": post.pk})
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_invalid_file_type_rejected(self):
+        self.client.force_login(self.member)
+        self.client.post(
+            reverse("communities:post_create", kwargs={"slug": self.community.slug}),
+            {"body": "Tentando PDF", "image": self.make_image_file(data=b"%PDF-1.4 fake", name="doc.pdf")},
+        )
+        self.assertEqual(Post.objects.count(), 0)
+
+    def test_oversized_image_rejected(self):
+        big = self.png_bytes() + (b"\x00" * (2 * 1024 * 1024 + 1))
+        self.client.force_login(self.member)
+        self.client.post(
+            reverse("communities:post_create", kwargs={"slug": self.community.slug}),
+            {"body": "Imagem grande demais", "image": self.make_image_file(data=big)},
+        )
+        self.assertEqual(Post.objects.count(), 0)

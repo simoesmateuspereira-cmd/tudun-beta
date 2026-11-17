@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.mail import send_mail
 from django.core.exceptions import PermissionDenied
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -20,7 +21,7 @@ from .forms import (
     NoticeForm,
     PostForm,
 )
-from .models import Community, Event, Invitation, Membership, Notice, Post
+from .models import Community, Event, Invitation, Membership, Notice, Post, PostImage
 from .permissions import get_active_membership, is_community_admin, require_permission
 from .services import (
     FlowError,
@@ -386,7 +387,7 @@ def feed(request, slug):
     posts = (
         Post.objects.filter(community=community)
         .select_related("author")
-        .prefetch_related("likes", "comments__author")[:50]
+        .prefetch_related("likes", "comments__author", "image")[:50]
     )
     liked_ids = set(
         Post.objects.filter(community=community, likes=request.user).values_list("pk", flat=True)
@@ -412,16 +413,21 @@ def post_create(request, slug):
     community = get_object_or_404(Community, slug=slug)
     if request.method != "POST":
         return redirect("communities:feed", slug=slug)
-    form = PostForm(request.POST)
+    form = PostForm(request.POST, request.FILES)
     if form.is_valid():
         try:
-            create_post(community=community, author=request.user, body=form.cleaned_data["body"])
+            create_post(
+                community=community,
+                author=request.user,
+                body=form.cleaned_data["body"],
+                image=form.cleaned_data.get("image"),
+            )
         except FlowError as exc:
             messages.error(request, str(exc))
         else:
             messages.success(request, "Publicação compartilhada no mural.")
     else:
-        messages.error(request, "Não foi possível publicar. Revise o texto.")
+        messages.error(request, "Não foi possível publicar. Revise o texto e a imagem.")
     return redirect("communities:feed", slug=slug)
 
 
@@ -476,3 +482,14 @@ def post_delete(request, slug, post_id):
         "communities/confirm.html",
         {"community": community, "object": post, "action_label": "Remover publicação"},
     )
+
+
+@login_required
+def post_image(request, slug, post_id):
+    community = get_object_or_404(Community, slug=slug)
+    require_permission(request.user, community, "view")
+    post = get_object_or_404(Post, pk=post_id, community=community)
+    image = get_object_or_404(PostImage, post=post)
+    response = HttpResponse(bytes(image.data), content_type=image.content_type)
+    response["Cache-Control"] = "private, max-age=3600"
+    return response

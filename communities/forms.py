@@ -127,6 +127,12 @@ class MembershipRoleForm(forms.Form):
 
 
 class PostForm(forms.ModelForm):
+    image = forms.ImageField(
+        label="Foto (opcional)",
+        required=False,
+        help_text="PNG, JPEG ou WebP de até 2 MB.",
+    )
+
     class Meta:
         model = Post
         fields = ["body"]

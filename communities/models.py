@@ -229,3 +229,34 @@ class Comment(TimeStampedModel):
 
     def __str__(self):
         return f"Comentário de {self.author}"
+
+
+class PostImage(TimeStampedModel):
+    MAX_BYTES = 2 * 1024 * 1024
+    ALLOWED_TYPES = {
+        "image/png": b"\x89PNG",
+        "image/jpeg": b"\xff\xd8\xff",
+        "image/webp": None,
+    }
+
+    post = models.OneToOneField(Post, on_delete=models.CASCADE, related_name="image")
+    data = models.BinaryField("arquivo")
+    content_type = models.CharField("tipo", max_length=30)
+    size = models.PositiveIntegerField("tamanho", editable=False)
+
+    class Meta:
+        verbose_name = "imagem da publicação"
+        verbose_name_plural = "imagens das publicações"
+
+    def __str__(self):
+        return f"Imagem do post {self.post_id}"
+
+    @classmethod
+    def sniff_content_type(cls, chunk):
+        if chunk[:4] == b"\x89PNG":
+            return "image/png"
+        if chunk[:3] == b"\xff\xd8\xff":
+            return "image/jpeg"
+        if chunk[:4] == b"RIFF" and chunk[8:12] == b"WEBP":
+            return "image/webp"
+        return None

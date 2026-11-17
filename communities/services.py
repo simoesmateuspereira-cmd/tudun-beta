@@ -11,7 +11,7 @@ from django.utils.text import slugify
 from audit.services import record_event
 from identity.services import email_is_verified
 
-from .models import Comment, Community, Event, Invitation, Membership, Post
+from .models import Comment, Community, Event, Invitation, Membership, Post, PostImage
 
 
 class FlowError(Exception):
@@ -315,21 +315,34 @@ def grant_extra_invites(*, membership, actor, amount=1):
         return membership
 
 
-def create_post(*, community, author, body):
+def create_post(*, community, author, body, image=None):
     membership = get_active_membership_cached(author, community)
     if membership is None:
         raise FlowError("Apenas membros ativos podem publicar no mural.")
     text = (body or "").strip()
     if not text:
         raise FlowError("Escreva algo para publicar.")
-    post = Post.objects.create(community=community, author=author, body=text[:2000])
-    record_event(
-        actor=author,
-        action="post.created",
-        target=post,
-        community=community,
-        details={"length": len(text)},
-    )
+    raw = content_type = None
+    if image is not None:
+        raw = image.read()
+        if not raw:
+            raise FlowError("O arquivo de imagem está vazio.")
+        if len(raw) > PostImage.MAX_BYTES:
+            raise FlowError("A imagem ultrapassa 2 MB. Envie um arquivo menor.")
+        content_type = PostImage.sniff_content_type(raw[:16])
+        if content_type is None:
+            raise FlowError("Formato não suportado. Envie PNG, JPEG ou WebP.")
+    with transaction.atomic():
+        post = Post.objects.create(community=community, author=author, body=text[:2000])
+        if raw is not None:
+            PostImage.objects.create(post=post, data=raw, content_type=content_type, size=len(raw))
+        record_event(
+            actor=author,
+            action="post.created",
+            target=post,
+            community=community,
+            details={"length": len(text), "with_image": raw is not None},
+        )
     return post
 
 
