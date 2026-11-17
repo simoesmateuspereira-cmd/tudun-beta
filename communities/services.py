@@ -11,7 +11,7 @@ from django.utils.text import slugify
 from audit.services import record_event
 from identity.services import email_is_verified
 
-from .models import Community, Event, Invitation, Membership
+from .models import Comment, Community, Event, Invitation, Membership, Post
 
 
 class FlowError(Exception):
@@ -313,3 +313,58 @@ def grant_extra_invites(*, membership, actor, amount=1):
             details={"user": membership.user.username, "previous": previous, "added": amount, "total": membership.extra_invites},
         )
         return membership
+
+
+def create_post(*, community, author, body):
+    membership = get_active_membership_cached(author, community)
+    if membership is None:
+        raise FlowError("Apenas membros ativos podem publicar no mural.")
+    text = (body or "").strip()
+    if not text:
+        raise FlowError("Escreva algo para publicar.")
+    post = Post.objects.create(community=community, author=author, body=text[:2000])
+    record_event(
+        actor=author,
+        action="post.created",
+        target=post,
+        community=community,
+        details={"length": len(text)},
+    )
+    return post
+
+
+def add_comment(*, post, author, body):
+    membership = get_active_membership_cached(author, post.community)
+    if membership is None:
+        raise FlowError("Apenas membros ativos podem comentar.")
+    text = (body or "").strip()
+    if not text:
+        raise FlowError("Escreva algo para comentar.")
+    return Comment.objects.create(post=post, author=author, body=text[:800])
+
+
+def toggle_like(*, post, user):
+    membership = get_active_membership_cached(user, post.community)
+    if membership is None:
+        raise FlowError("Apenas membros ativos podem curtir.")
+    if post.likes.filter(pk=user.pk).exists():
+        post.likes.remove(user)
+        return False
+    post.likes.add(user)
+    return True
+
+
+def delete_post(*, post, actor):
+    membership = get_active_membership_cached(actor, post.community)
+    is_moderator = bool(membership and membership.role in {Membership.Role.ADMIN, Membership.Role.MODERATOR})
+    if post.author_id != actor.pk and not is_moderator:
+        raise FlowError("Somente o autor ou um moderador pode remover a publicação.")
+    community = post.community
+    record_event(
+        actor=actor,
+        action="post.removed",
+        target=post,
+        community=community,
+        details={"author": post.author.username, "reason": "moderacao" if is_moderator else "proprio_autor"},
+    )
+    post.delete()

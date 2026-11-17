@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
 
-from .models import Community, Event, Invitation, Membership, Notice
+from .models import Comment, Community, Event, Invitation, Membership, Notice, Post
 
 
 class CommunityForm(forms.ModelForm):
@@ -124,3 +124,19 @@ class NoticeForm(forms.ModelForm):
 
 class MembershipRoleForm(forms.Form):
     role = forms.ChoiceField(label="Novo perfil", choices=Membership.Role.choices)
+
+
+class PostForm(forms.ModelForm):
+    class Meta:
+        model = Post
+        fields = ["body"]
+        labels = {"body": "No que você está pensando?"}
+        widgets = {"body": forms.Textarea(attrs={"rows": 4, "placeholder": "Compartilhe uma conquista, uma experiência ou um recado com a comunidade…"})}
+
+
+class CommentForm(forms.ModelForm):
+    class Meta:
+        model = Comment
+        fields = ["body"]
+        labels = {"body": "Comentar"}
+        widgets = {"body": forms.Textarea(attrs={"rows": 2, "placeholder": "Escreva um comentário…"})}

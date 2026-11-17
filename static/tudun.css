@@ -281,3 +281,28 @@ blockquote { border-left: 3px solid var(--green); padding: 10px 18px; margin: 22
   .event-actions, .event-management-actions { align-items: flex-start; flex-direction: column; }
   .qr-panel { padding: 20px; }
 }
+
+/* Mural da comunidade */
+.feed-layout { display: grid; gap: 24px; grid-template-columns: minmax(260px, 340px) 1fr; align-items: start; }
+.feed-list { display: grid; gap: 16px; }
+.post-composer textarea { resize: vertical; }
+.post-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.post-author { font-weight: 700; color: var(--ink); }
+.post-date { color: var(--muted); font-size: 0.85rem; }
+.post-body { color: var(--ink); white-space: normal; margin-bottom: 12px; }
+.post-actions { display: flex; align-items: center; gap: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.like-form { display: inline-flex; align-items: center; gap: 8px; }
+.like-button { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; color: var(--green); cursor: pointer; font-weight: 600; }
+.like-button:hover { border-color: var(--green); }
+.like-button.liked { background: var(--mint); border-color: var(--green); color: var(--green-dark); }
+.like-count { color: var(--muted); font-size: 0.9rem; }
+.comment-list { margin-top: 12px; display: grid; gap: 10px; }
+.comment { background: var(--paper); border-radius: 10px; padding: 10px 14px; }
+.comment strong { color: var(--ink); }
+.comment-date { color: var(--muted); font-size: 0.78rem; margin-left: 8px; }
+.comment p { margin: 4px 0 0; color: var(--ink); }
+.comment-form { margin-top: 12px; }
+.comment-form .field { margin-bottom: 8px; }
+@media (max-width: 860px) {
+  .feed-layout { grid-template-columns: 1fr; }
+}

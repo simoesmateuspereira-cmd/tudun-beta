@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}Mural · {{ community.name }} · TUDUN{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <span class="eyebrow">{{ community.name }}</span>
+    <h1>Mural da comunidade</h1>
+    <p>Compartilhe conquistas, experiências e recados. Só membros da comunidade veem este mural.</p>
+  </div>
+</section>
+{% include 'partials/community_nav.html' %}
+<div class="feed-layout">
+  <div class="card post-composer">
+    <form method="post" action="{% url 'communities:post_create' community.slug %}">
+      {% csrf_token %}
+      {% include 'partials/form.html' with form=post_form %}
+      <button class="button button-full" type="submit">Publicar no mural</button>
+    </form>
+  </div>
+  <div class="feed-list">
+    {% for post in posts %}
+      <article class="card post-card">
+        <header class="post-header">
+          <span class="post-author">{{ post.author.username }}</span>
+          <span class="post-date">{{ post.created_at|date:'d/m/Y à\s H:i' }}</span>
+        </header>
+        <p class="post-body">{{ post.body|linebreaksbr }}</p>
+        <footer class="post-actions">
+          <form method="post" action="{% url 'communities:post_like' community.slug post.pk %}" class="like-form">
+            {% csrf_token %}
+            <button class="like-button{% if post.pk in liked_ids %} liked{% endif %}" type="submit" aria-label="Curtir publicação">
+              {% if post.pk in liked_ids %}♥ Curtido{% else %}♡ Curtir{% endif %}
+            </button>
+            <span class="like-count">{{ post.likes.count }}</span>
+          </form>
+          {% if can_moderate or post.author == user %}
+            <a class="text-link danger-text" href="{% url 'communities:post_delete' community.slug post.pk %}">Remover</a>
+          {% endif %}
+        </footer>
+        {% if post.comments.all %}
+          <div class="comment-list">
+            {% for comment in post.comments.all %}
+              <div class="comment">
+                <strong>{{ comment.author.username }}</strong>
+                <span class="comment-date">{{ comment.created_at|date:'d/m/Y H:i' }}</span>
+                <p>{{ comment.body|linebreaksbr }}</p>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <form method="post" action="{% url 'communities:comment_create' community.slug post.pk %}" class="comment-form">
+          {% csrf_token %}
+          {% include 'partials/form.html' with form=comment_form %}
+          <button class="button button-secondary button-small" type="submit">Comentar</button>
+        </form>
+      </article>
+    {% empty %}
+      <div class="empty-state">
+        <h2>Mural vazio</h2>
+        <p>Seja a primeira pessoa a compartilhar algo com a comunidade.</p>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -200,3 +200,32 @@ class Notice(TimeStampedModel):
 
     def __str__(self):
         return self.title
+
+
+class Post(TimeStampedModel):
+    community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="posts")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="posts")
+    body = models.TextField("conteúdo", max_length=2000)
+    likes = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="liked_posts", blank=True)
+
+    class Meta:
+        verbose_name = "publicação"
+        verbose_name_plural = "publicações"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Post de {self.author} em {self.community}"
+
+
+class Comment(TimeStampedModel):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="comments")
+    body = models.TextField("comentário", max_length=800)
+
+    class Meta:
+        verbose_name = "comentário"
+        verbose_name_plural = "comentários"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Comentário de {self.author}"

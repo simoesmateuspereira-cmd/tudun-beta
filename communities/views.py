@@ -12,17 +12,23 @@ from identity.ratelimit import rate_limit
 from identity.services import email_is_verified
 
 from .forms import (
+    CommentForm,
     CommunityForm,
     EventForm,
     InvitationForm,
     MembershipRoleForm,
     NoticeForm,
+    PostForm,
 )
-from .models import Community, Event, Invitation, Membership, Notice
+from .models import Community, Event, Invitation, Membership, Notice, Post
 from .permissions import get_active_membership, is_community_admin, require_permission
 from .services import (
     FlowError,
     accept_invitation,
+    add_comment,
+    create_post,
+    delete_post,
+    toggle_like,
     cancel_event,
     change_membership_role,
     change_membership_status,
@@ -369,4 +375,104 @@ def audit_list(request, slug):
         request,
         "communities/audit.html",
         {"community": community, "events": AuditEvent.objects.filter(community=community).select_related("actor")[:200]},
+    )
+
+
+@login_required
+def feed(request, slug):
+    community = get_object_or_404(Community, slug=slug)
+    require_permission(request.user, community, "view")
+    membership = get_active_membership(request.user, community)
+    posts = (
+        Post.objects.filter(community=community)
+        .select_related("author")
+        .prefetch_related("likes", "comments__author")[:50]
+    )
+    liked_ids = set(
+        Post.objects.filter(community=community, likes=request.user).values_list("pk", flat=True)
+    )
+    return render(
+        request,
+        "communities/feed.html",
+        {
+            "community": community,
+            "membership": membership,
+            "can_moderate": membership.role in {Membership.Role.ADMIN, Membership.Role.MODERATOR},
+            "posts": posts,
+            "liked_ids": liked_ids,
+            "post_form": PostForm(),
+            "comment_form": CommentForm(),
+        },
+    )
+
+
+@login_required
+@rate_limit(rate="10/m", key="user_or_ip")
+def post_create(request, slug):
+    community = get_object_or_404(Community, slug=slug)
+    if request.method != "POST":
+        return redirect("communities:feed", slug=slug)
+    form = PostForm(request.POST)
+    if form.is_valid():
+        try:
+            create_post(community=community, author=request.user, body=form.cleaned_data["body"])
+        except FlowError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(request, "Publicação compartilhada no mural.")
+    else:
+        messages.error(request, "Não foi possível publicar. Revise o texto.")
+    return redirect("communities:feed", slug=slug)
+
+
+@login_required
+@rate_limit(rate="30/m", key="user_or_ip")
+def post_like(request, slug, post_id):
+    community = get_object_or_404(Community, slug=slug)
+    post = get_object_or_404(Post, pk=post_id, community=community)
+    if request.method == "POST":
+        try:
+            toggle_like(post=post, user=request.user)
+        except FlowError as exc:
+            messages.error(request, str(exc))
+    return redirect("communities:feed", slug=slug)
+
+
+@login_required
+@rate_limit(rate="20/m", key="user_or_ip")
+def comment_create(request, slug, post_id):
+    community = get_object_or_404(Community, slug=slug)
+    post = get_object_or_404(Post, pk=post_id, community=community)
+    if request.method == "POST":
+        form = CommentForm(request.POST)
+        if form.is_valid():
+            try:
+                add_comment(post=post, author=request.user, body=form.cleaned_data["body"])
+            except FlowError as exc:
+                messages.error(request, str(exc))
+            else:
+                messages.success(request, "Comentário publicado.")
+        else:
+            messages.error(request, "Não foi possível comentar. Revise o texto.")
+    return redirect("communities:feed", slug=slug)
+
+
+@login_required
+@rate_limit(rate="10/m", key="user_or_ip")
+def post_delete(request, slug, post_id):
+    community = get_object_or_404(Community, slug=slug)
+    require_permission(request.user, community, "view")
+    post = get_object_or_404(Post, pk=post_id, community=community)
+    if request.method == "POST":
+        try:
+            delete_post(post=post, actor=request.user)
+        except FlowError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(request, "Publicação removida do mural.")
+        return redirect("communities:feed", slug=slug)
+    return render(
+        request,
+        "communities/confirm.html",
+        {"community": community, "object": post, "action_label": "Remover publicação"},
     )

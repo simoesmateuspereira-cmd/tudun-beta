@@ -1,5 +1,6 @@
 <nav class="community-nav" aria-label="Áreas da comunidade">
   <a href="{% url 'communities:detail' community.slug %}">Visão geral</a>
+  <a href="{% url 'communities:feed' community.slug %}">Mural</a>
   <a href="{% url 'communities:events' community.slug %}">Eventos</a>
   <a href="{% url 'communities:invitations' community.slug %}">Convites</a>
   {% if membership.role == 'admin' or membership.role == 'moderator' or can_moderate %}
